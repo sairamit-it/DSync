@@ -79,15 +79,22 @@ const MessageItem = memo(
         }
       }
 
-      const isRead = message.readBy && message.readBy.length > 1;
-      const isDelivered = message.deliveredTo && message.deliveredTo.length > 0;
+      // Enhanced status logic with real-time updates
+      const readBy = message.readBy || [];
+      const deliveredTo = message.deliveredTo || [];
+      
+      // Check if message is read by others (excluding sender)
+      const isReadByOthers = readBy.some(read => read.user._id !== currentUser.id);
+      
+      // Check if message is delivered to others
+      const isDeliveredToOthers = deliveredTo.some(delivery => delivery.user !== currentUser.id);
 
-      if (isRead) {
-        return <CheckCheck size={12} className="text-blue-500" />;
-      } else if (isDelivered) {
-        return <CheckCheck size={12} className="text-gray-400" />;
+      if (isReadByOthers) {
+        return <CheckCheck size={12} className="text-blue-500" title="Read" />;
+      } else if (isDeliveredToOthers) {
+        return <CheckCheck size={12} className="text-gray-400" title="Delivered" />;
       } else {
-        return <Check size={12} className="text-gray-400" />;
+        return <Check size={12} className="text-gray-400" title="Sent" />;
       }
     };
 
@@ -295,7 +302,7 @@ const MessageItem = memo(
                   transition={{ type: "spring", stiffness: 500 }}
                 >
                   <Heart size={12} className="like-icon" />
-                 
+                  <span className="like-count">{message.likes.length}</span>
                 </motion.div>
               )}
 
@@ -319,18 +326,12 @@ const MessageItem = memo(
               </div>
             </div>
 
-            {/* 3-dot menu button - always visible with improved touch handling */}
+            {/* 3-dot menu button */}
             {!isOptimistic && (
               <div className="message-menu-container" ref={menuRef}>
                 <button
                   className="message-menu-btn"
                   onClick={handleMenuClick}
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleMenuClick(e);
-                  }}
                   aria-label="Message options"
                   type="button"
                 >
@@ -349,10 +350,6 @@ const MessageItem = memo(
                       <button
                         className="menu-item"
                         onClick={() => handleMenuAction("like")}
-                        onTouchEnd={(e) => {
-                          e.preventDefault();
-                          handleMenuAction("like");
-                        }}
                       >
                         <Heart size={16} className={isLiked ? "liked" : ""} />
                         <span>{isLiked ? "Unlike" : "Like"}</span>
@@ -361,10 +358,6 @@ const MessageItem = memo(
                       <button
                         className="menu-item"
                         onClick={() => handleMenuAction("reply")}
-                        onTouchEnd={(e) => {
-                          e.preventDefault();
-                          handleMenuAction("reply");
-                        }}
                       >
                         <Reply size={16} />
                         <span>Reply</span>
@@ -374,10 +367,6 @@ const MessageItem = memo(
                         <button
                           className="menu-item"
                           onClick={() => handleMenuAction("edit")}
-                          onTouchEnd={(e) => {
-                            e.preventDefault();
-                            handleMenuAction("edit");
-                          }}
                         >
                           <Edit3 size={16} />
                           <span>Edit</span>
@@ -388,10 +377,6 @@ const MessageItem = memo(
                         <button
                           className="menu-item delete"
                           onClick={() => handleMenuAction("delete")}
-                          onTouchEnd={(e) => {
-                            e.preventDefault();
-                            handleMenuAction("delete");
-                          }}
                         >
                           <Trash2 size={16} />
                           <span>Delete</span>

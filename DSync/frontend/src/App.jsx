@@ -7,9 +7,17 @@ import Register from "./components/Auth/Register";
 import Chat from "./components/Chat/Chat";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { notificationManager } from "./utils/notifications";
+import { useEffect } from "react";
 import "./App.css";
 
 function App() {
+  // Initialize notifications and service worker
+  useEffect(() => {
+    notificationManager.requestPermission();
+    notificationManager.registerServiceWorker();
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>

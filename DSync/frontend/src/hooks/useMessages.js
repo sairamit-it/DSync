@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../utils/api";
 import { storage } from "../utils/storage";
+import { notificationManager } from "../utils/notifications";
 
 export const useMessages = (chatId) => {
   const [messages, setMessages] = useState([]);
@@ -10,7 +11,32 @@ export const useMessages = (chatId) => {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
   const optimisticMessagesRef = useRef(new Map());
+  const messagesContainerRef = useRef(null);
+  const lastScrollHeight = useRef(0);
+  const isLoadingMore = useRef(false);
   const MESSAGES_PER_PAGE = 20;
+
+  // Auto-scroll to bottom for new messages
+  const scrollToBottom = useCallback((smooth = true) => {
+    if (messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: smooth ? 'smooth' : 'instant'
+      });
+    }
+  }, []);
+
+  // Maintain scroll position when loading older messages
+  const maintainScrollPosition = useCallback(() => {
+    if (messagesContainerRef.current && isLoadingMore.current) {
+      const container = messagesContainerRef.current;
+      const newScrollHeight = container.scrollHeight;
+      const scrollDiff = newScrollHeight - lastScrollHeight.current;
+      container.scrollTop = container.scrollTop + scrollDiff;
+      isLoadingMore.current = false;
+    }
+  }, []);
 
   // Load messages when chatId changes
   useEffect(() => {
@@ -19,6 +45,8 @@ export const useMessages = (chatId) => {
       const cachedMessages = storage.getMessages(chatId);
       if (cachedMessages.length > 0) {
         setMessages(cachedMessages);
+        // Auto-scroll to bottom when opening chat
+        setTimeout(() => scrollToBottom(false), 100);
       }
 
       // Reset pagination
@@ -33,7 +61,12 @@ export const useMessages = (chatId) => {
       setHasMore(true);
       optimisticMessagesRef.current.clear();
     }
-  }, [chatId]);
+  }, [chatId, scrollToBottom]);
+
+  // Maintain scroll position after loading more messages
+  useEffect(() => {
+    maintainScrollPosition();
+  }, [messages, maintainScrollPosition]);
 
   const fetchMessages = useCallback(
     async (isInitial = false) => {
@@ -51,8 +84,16 @@ export const useMessages = (chatId) => {
           setMessages(newMessages);
           storage.setMessages(chatId, newMessages);
           setPage(2);
+          // Auto-scroll to bottom for initial load
+          setTimeout(() => scrollToBottom(false), 100);
         } else {
-          // For pagination, prepend older messages
+          // For pagination, store current scroll height
+          if (messagesContainerRef.current) {
+            lastScrollHeight.current = messagesContainerRef.current.scrollHeight;
+            isLoadingMore.current = true;
+          }
+
+          // Prepend older messages
           setMessages((prev) => {
             const combined = [...newMessages, ...prev];
             // Remove duplicates
@@ -75,7 +116,7 @@ export const useMessages = (chatId) => {
         setLoading(false);
       }
     },
-    [chatId, loading, page]
+    [chatId, loading, page, scrollToBottom]
   );
 
   const loadMoreMessages = useCallback(() => {
@@ -96,22 +137,10 @@ export const useMessages = (chatId) => {
       // Get current user from auth context or localStorage
       const getCurrentUser = () => {
         try {
-          // Try to get from localStorage first
           const storedUser = localStorage.getItem("user");
           if (storedUser) {
             return JSON.parse(storedUser);
           }
-
-          // Fallback to cookie parsing
-          const userCookie = document.cookie
-            .split("; ")
-            .find((row) => row.startsWith("user="));
-
-          if (userCookie) {
-            return JSON.parse(decodeURIComponent(userCookie.split("=")[1]));
-          }
-
-          // Default fallback
           return { id: "temp", name: "You", avatar: "" };
         } catch (error) {
           console.error("Error getting current user:", error);
@@ -121,7 +150,7 @@ export const useMessages = (chatId) => {
 
       const currentUser = getCurrentUser();
 
-      // Create optimistic message with animation
+      // Create optimistic message
       const optimisticMessage = {
         _id: optimisticId,
         content: content || (file ? file.name : ""),
@@ -135,19 +164,22 @@ export const useMessages = (chatId) => {
         createdAt: new Date().toISOString(),
         replyTo,
         likes: [],
-        readBy: [],
+        readBy: [{ user: { _id: currentUser.id }, readAt: new Date() }],
         deliveredTo: [],
         isOptimistic: true,
         status: "sending",
       };
 
-      // Add optimistic message immediately with animation
+      // Add optimistic message immediately
       setMessages((prev) => {
         const updated = [...prev, optimisticMessage];
         storage.setMessages(chatId, updated);
         return updated;
       });
       optimisticMessagesRef.current.set(optimisticId, optimisticMessage);
+
+      // Auto-scroll to bottom for new message
+      setTimeout(() => scrollToBottom(true), 50);
 
       try {
         let response;
@@ -200,7 +232,7 @@ export const useMessages = (chatId) => {
         throw error;
       }
     },
-    [chatId]
+    [chatId, scrollToBottom]
   );
 
   const editMessage = useCallback(
@@ -285,18 +317,6 @@ export const useMessages = (chatId) => {
             const user = JSON.parse(storedUser);
             return { id: user.id };
           }
-
-          const userCookie = document.cookie
-            .split("; ")
-            .find((row) => row.startsWith("user="));
-
-          if (userCookie) {
-            const user = JSON.parse(
-              decodeURIComponent(userCookie.split("=")[1])
-            );
-            return { id: user.id };
-          }
-
           return { id: "temp" };
         } catch (error) {
           console.error("Error getting current user for like:", error);
@@ -362,11 +382,24 @@ export const useMessages = (chatId) => {
 
   const markAsRead = useCallback(async (messageId) => {
     try {
-      await api.put(`/message/${messageId}/read`);
+      const response = await api.put(`/message/${messageId}/read`);
+      
+      // Update message with read status
+      setMessages((prev) => {
+        const updated = prev.map((msg) =>
+          msg._id === messageId 
+            ? { ...msg, readBy: response.data.readBy }
+            : msg
+        );
+        storage.setMessages(chatId, updated);
+        return updated;
+      });
+
+      return response.data;
     } catch (error) {
       console.error("Failed to mark message as read:", error);
     }
-  }, []);
+  }, [chatId]);
 
   const addMessage = useCallback(
     (message) => {
@@ -376,10 +409,20 @@ export const useMessages = (chatId) => {
 
         const updated = [...prev, message];
         storage.setMessages(chatId, updated);
+        
+        // Auto-scroll to bottom for new incoming message
+        setTimeout(() => scrollToBottom(true), 50);
+        
+        // Show notification for incoming messages
+        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+        if (message.sender._id !== currentUser.id) {
+          notificationManager.showMessageNotification(message);
+        }
+        
         return updated;
       });
     },
-    [chatId]
+    [chatId, scrollToBottom]
   );
 
   const updateMessage = useCallback(
@@ -419,5 +462,7 @@ export const useMessages = (chatId) => {
     updateMessage,
     removeMessage,
     loadMoreMessages,
+    messagesContainerRef,
+    scrollToBottom,
   };
 };

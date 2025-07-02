@@ -177,7 +177,15 @@ io.on("connection", (socket) => {
   socket.on("send-message", (data) => {
     try {
       if (data && data.chatId) {
-        socket.to(data.chatId).emit("receive-message", data);
+        // Emit to all users in the chat including sender for real-time sync
+        io.to(data.chatId).emit("receive-message", data);
+        
+        // Emit delivery status to sender
+        socket.emit("message-delivered", {
+          messageId: data._id,
+          chatId: data.chatId,
+          deliveredTo: data.deliveredTo
+        });
       }
     } catch (error) {
       console.error("Send message error:", error);
@@ -207,10 +215,22 @@ io.on("connection", (socket) => {
   socket.on("message-read", (data) => {
     try {
       if (data && data.chatId) {
-        socket.to(data.chatId).emit("message-read", data);
+        // Broadcast read status to all users in chat
+        io.to(data.chatId).emit("message-read", data);
       }
     } catch (error) {
       console.error("Message read error:", error);
+    }
+  });
+
+  socket.on("message-delivered", (data) => {
+    try {
+      if (data && data.chatId) {
+        // Broadcast delivery status to sender
+        socket.to(data.chatId).emit("message-delivered", data);
+      }
+    } catch (error) {
+      console.error("Message delivered error:", error);
     }
   });
 

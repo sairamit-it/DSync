@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Phone, Video, MoreVertical } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useMessages } from "../../hooks/useMessages";
+import { notificationManager } from "../../utils/notifications";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 
@@ -42,7 +43,15 @@ const ChatWindow = React.memo(
       updateMessage,
       removeMessage,
       loadMoreMessages,
+      messagesContainerRef,
+      scrollToBottom,
     } = useMessages(selectedChat?._id);
+
+    // Initialize notifications on component mount
+    useEffect(() => {
+      notificationManager.requestPermission();
+      notificationManager.registerServiceWorker();
+    }, []);
 
     useEffect(() => {
       if (socket && selectedChat) {
@@ -56,8 +65,21 @@ const ChatWindow = React.memo(
             addMessage(message);
             onUpdateChatLatestMessage(selectedChat._id, message);
 
+            // Auto-mark as read if sender is not current user
             if (message.sender._id !== user.id) {
-              setTimeout(() => markAsRead(message._id), 500);
+              setTimeout(() => {
+                markAsRead(message._id).then((response) => {
+                  // Emit read status to other users
+                  if (socket && response) {
+                    socket.emit("message-read", {
+                      messageId: message._id,
+                      chatId: selectedChat._id,
+                      userId: user.id,
+                      readBy: response.readBy
+                    });
+                  }
+                });
+              }, 500);
             }
           }
         };
@@ -79,10 +101,20 @@ const ChatWindow = React.memo(
         const handleMessageRead = (data) => {
           if (data.chatId === selectedChat._id) {
             updateMessage(data.messageId, {
-              readBy: [
-                ...(messages.find((m) => m._id === data.messageId)?.readBy ||
-                  []),
+              readBy: data.readBy || [
+                ...(messages.find((m) => m._id === data.messageId)?.readBy || []),
                 { user: { _id: data.userId }, readAt: new Date() },
+              ],
+            });
+          }
+        };
+
+        const handleMessageDelivered = (data) => {
+          if (data.chatId === selectedChat._id) {
+            updateMessage(data.messageId, {
+              deliveredTo: data.deliveredTo || [
+                ...(messages.find((m) => m._id === data.messageId)?.deliveredTo || []),
+                { user: data.userId, deliveredAt: new Date() },
               ],
             });
           }
@@ -113,6 +145,7 @@ const ChatWindow = React.memo(
         socket.on("user-typing", handleUserTyping);
         socket.on("user-stop-typing", handleUserStopTyping);
         socket.on("message-read", handleMessageRead);
+        socket.on("message-delivered", handleMessageDelivered);
         socket.on("message-liked", handleMessageLiked);
         socket.on("message-edited", handleMessageEdited);
         socket.on("message-deleted", handleMessageDeleted);
@@ -122,6 +155,7 @@ const ChatWindow = React.memo(
           socket.off("user-typing", handleUserTyping);
           socket.off("user-stop-typing", handleUserStopTyping);
           socket.off("message-read", handleMessageRead);
+          socket.off("message-delivered", handleMessageDelivered);
           socket.off("message-liked", handleMessageLiked);
           socket.off("message-edited", handleMessageEdited);
           socket.off("message-deleted", handleMessageDeleted);
@@ -360,35 +394,34 @@ const ChatWindow = React.memo(
           </div>
         </div>
 
-        <div className="messages-container">
-          {loading && messages.length === 0 ? (
-            <div className="loading-messages">
-              {[...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`message-skeleton ${
-                    i % 2 === 0 ? "sent" : "received"
-                  }`}
-                >
-                  <div className="skeleton-bubble"></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <MessageList
-              messages={messages}
-              currentUser={user}
-              typingUsers={typingUsers}
-              onLike={handleLikeMessage}
-              onReply={(msg) => setReplyTo(msg)}
-              onEdit={handleEditMessage}
-              onDelete={handleDeleteMessage}
-              hasMore={hasMore}
-              loading={loading}
-              onLoadMore={loadMoreMessages}
-            />
-          )}
-        </div>
+        {loading && messages.length === 0 ? (
+          <div className="loading-messages">
+            {[...Array(5)].map((_, i) => (
+              <div
+                key={i}
+                className={`message-skeleton ${
+                  i % 2 === 0 ? "sent" : "received"
+                }`}
+              >
+                <div className="skeleton-bubble"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <MessageList
+            messages={messages}
+            currentUser={user}
+            typingUsers={typingUsers}
+            onLike={handleLikeMessage}
+            onReply={(msg) => setReplyTo(msg)}
+            onEdit={handleEditMessage}
+            onDelete={handleDeleteMessage}
+            hasMore={hasMore}
+            loading={loading}
+            onLoadMore={loadMoreMessages}
+            messagesContainerRef={messagesContainerRef}
+          />
+        )}
 
         <MessageInput
           onSendMessage={handleSendMessage}
