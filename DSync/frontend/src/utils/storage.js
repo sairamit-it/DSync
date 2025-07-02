@@ -81,11 +81,16 @@ export const storage = {
     }
   },
 
-  // Messages cache with size limit per chat
+  // Messages cache with size limit per chat and deduplication
   setMessages: (chatId, messages) => {
     try {
+      // Deduplicate messages before storing
+      const uniqueMessages = messages.filter((msg, index, arr) => 
+        arr.findIndex(m => m._id === msg._id) === index
+      );
+      
       // Limit to last 100 messages per chat to prevent storage overflow
-      const limitedMessages = messages.slice(-100);
+      const limitedMessages = uniqueMessages.slice(-100);
       localStorage.setItem(
         `messages_${chatId}`,
         JSON.stringify(limitedMessages)
@@ -111,7 +116,12 @@ export const storage = {
   getMessages: (chatId) => {
     try {
       const messages = localStorage.getItem(`messages_${chatId}`);
-      return messages ? JSON.parse(messages) : [];
+      const parsed = messages ? JSON.parse(messages) : [];
+      
+      // Deduplicate on retrieval as well
+      return parsed.filter((msg, index, arr) => 
+        arr.findIndex(m => m._id === msg._id) === index
+      );
     } catch (error) {
       console.error(`Failed to get messages for chat ${chatId}:`, error);
       return [];

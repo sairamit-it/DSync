@@ -14,6 +14,7 @@ export const useMessages = (chatId) => {
   const messagesContainerRef = useRef(null);
   const lastScrollHeight = useRef(0);
   const isLoadingMore = useRef(false);
+  const processedMessageIds = useRef(new Set());
   const MESSAGES_PER_PAGE = 20;
 
   // Auto-scroll to bottom for new messages
@@ -38,13 +39,46 @@ export const useMessages = (chatId) => {
     }
   }, []);
 
+  // Helper function to get current user safely
+  const getCurrentUser = useCallback(() => {
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        return JSON.parse(storedUser);
+      }
+      return null;
+    } catch (error) {
+      console.error("Error getting current user:", error);
+      return null;
+    }
+  }, []);
+
+  // Helper function to deduplicate messages
+  const deduplicateMessages = useCallback((messageList) => {
+    const seen = new Set();
+    return messageList.filter(msg => {
+      if (seen.has(msg._id)) {
+        return false;
+      }
+      seen.add(msg._id);
+      return true;
+    });
+  }, []);
+
   // Load messages when chatId changes
   useEffect(() => {
     if (chatId) {
+      // Clear previous state
+      processedMessageIds.current.clear();
+      optimisticMessagesRef.current.clear();
+      
       // Load cached messages first
       const cachedMessages = storage.getMessages(chatId);
       if (cachedMessages.length > 0) {
-        setMessages(cachedMessages);
+        const dedupedMessages = deduplicateMessages(cachedMessages);
+        setMessages(dedupedMessages);
+        // Mark cached messages as processed
+        dedupedMessages.forEach(msg => processedMessageIds.current.add(msg._id));
         // Auto-scroll to bottom when opening chat
         setTimeout(() => scrollToBottom(false), 100);
       }
@@ -59,9 +93,10 @@ export const useMessages = (chatId) => {
       setMessages([]);
       setPage(1);
       setHasMore(true);
+      processedMessageIds.current.clear();
       optimisticMessagesRef.current.clear();
     }
-  }, [chatId, scrollToBottom]);
+  }, [chatId, scrollToBottom, deduplicateMessages]);
 
   // Maintain scroll position after loading more messages
   useEffect(() => {
@@ -81,8 +116,12 @@ export const useMessages = (chatId) => {
         const newMessages = response.data;
 
         if (isInitial) {
-          setMessages(newMessages);
-          storage.setMessages(chatId, newMessages);
+          // For initial load, replace all messages
+          const dedupedMessages = deduplicateMessages(newMessages);
+          setMessages(dedupedMessages);
+          storage.setMessages(chatId, dedupedMessages);
+          // Mark messages as processed
+          dedupedMessages.forEach(msg => processedMessageIds.current.add(msg._id));
           setPage(2);
           // Auto-scroll to bottom for initial load
           setTimeout(() => scrollToBottom(false), 100);
@@ -93,14 +132,18 @@ export const useMessages = (chatId) => {
             isLoadingMore.current = true;
           }
 
-          // Prepend older messages
+          // Prepend older messages, avoiding duplicates
           setMessages((prev) => {
-            const combined = [...newMessages, ...prev];
-            // Remove duplicates
-            const unique = combined.filter(
-              (msg, index, arr) =>
-                arr.findIndex((m) => m._id === msg._id) === index
+            const filteredNewMessages = newMessages.filter(
+              msg => !processedMessageIds.current.has(msg._id)
             );
+            
+            const combined = [...filteredNewMessages, ...prev];
+            const unique = deduplicateMessages(combined);
+            
+            // Mark new messages as processed
+            filteredNewMessages.forEach(msg => processedMessageIds.current.add(msg._id));
+            
             storage.setMessages(chatId, unique);
             return unique;
           });
@@ -116,7 +159,7 @@ export const useMessages = (chatId) => {
         setLoading(false);
       }
     },
-    [chatId, loading, page, scrollToBottom]
+    [chatId, loading, page, scrollToBottom, deduplicateMessages]
   );
 
   const loadMoreMessages = useCallback(() => {
@@ -133,24 +176,14 @@ export const useMessages = (chatId) => {
       if (!chatId || (!content?.trim() && !file)) return;
 
       const optimisticId = generateOptimisticId();
-
-      // Get current user from auth context or localStorage
-      const getCurrentUser = () => {
-        try {
-          const storedUser = localStorage.getItem("user");
-          if (storedUser) {
-            return JSON.parse(storedUser);
-          }
-          return { id: "temp", name: "You", avatar: "" };
-        } catch (error) {
-          console.error("Error getting current user:", error);
-          return { id: "temp", name: "You", avatar: "" };
-        }
-      };
-
       const currentUser = getCurrentUser();
+      
+      if (!currentUser) {
+        console.error("No current user found");
+        return;
+      }
 
-      // Create optimistic message
+      // Create optimistic message with correct sender info
       const optimisticMessage = {
         _id: optimisticId,
         content: content || (file ? file.name : ""),
@@ -177,6 +210,7 @@ export const useMessages = (chatId) => {
         return updated;
       });
       optimisticMessagesRef.current.set(optimisticId, optimisticMessage);
+      processedMessageIds.current.add(optimisticId);
 
       // Auto-scroll to bottom for new message
       setTimeout(() => scrollToBottom(true), 50);
@@ -215,7 +249,11 @@ export const useMessages = (chatId) => {
           return updated;
         });
 
+        // Update processed IDs
+        processedMessageIds.current.delete(optimisticId);
+        processedMessageIds.current.add(realMessage._id);
         optimisticMessagesRef.current.delete(optimisticId);
+        
         return realMessage;
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -232,7 +270,7 @@ export const useMessages = (chatId) => {
         throw error;
       }
     },
-    [chatId, scrollToBottom]
+    [chatId, scrollToBottom, getCurrentUser]
   );
 
   const editMessage = useCallback(
@@ -285,6 +323,9 @@ export const useMessages = (chatId) => {
         return updated;
       });
 
+      // Remove from processed IDs
+      processedMessageIds.current.delete(messageId);
+
       try {
         await api.delete(`/message/${messageId}`);
       } catch (error) {
@@ -299,6 +340,7 @@ export const useMessages = (chatId) => {
             storage.setMessages(chatId, updated);
             return updated;
           });
+          processedMessageIds.current.add(messageId);
         }
 
         throw error;
@@ -309,22 +351,8 @@ export const useMessages = (chatId) => {
 
   const likeMessage = useCallback(
     async (messageId) => {
-      // Get current user
-      const getCurrentUser = () => {
-        try {
-          const storedUser = localStorage.getItem("user");
-          if (storedUser) {
-            const user = JSON.parse(storedUser);
-            return { id: user.id };
-          }
-          return { id: "temp" };
-        } catch (error) {
-          console.error("Error getting current user for like:", error);
-          return { id: "temp" };
-        }
-      };
-
       const currentUser = getCurrentUser();
+      if (!currentUser) return;
 
       // Optimistic update
       const originalMessage = messages.find((msg) => msg._id === messageId);
@@ -377,7 +405,7 @@ export const useMessages = (chatId) => {
         throw error;
       }
     },
-    [messages, chatId]
+    [messages, chatId, getCurrentUser]
   );
 
   const markAsRead = useCallback(async (messageId) => {
@@ -403,26 +431,35 @@ export const useMessages = (chatId) => {
 
   const addMessage = useCallback(
     (message) => {
+      // Prevent duplicate messages
+      if (processedMessageIds.current.has(message._id)) {
+        return;
+      }
+
       setMessages((prev) => {
         const exists = prev.find((m) => m._id === message._id);
         if (exists) return prev;
 
         const updated = [...prev, message];
-        storage.setMessages(chatId, updated);
+        const deduped = deduplicateMessages(updated);
+        storage.setMessages(chatId, deduped);
+        
+        // Mark as processed
+        processedMessageIds.current.add(message._id);
         
         // Auto-scroll to bottom for new incoming message
         setTimeout(() => scrollToBottom(true), 50);
         
         // Show notification for incoming messages
-        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-        if (message.sender._id !== currentUser.id) {
+        const currentUser = getCurrentUser();
+        if (currentUser && message.sender._id !== currentUser.id) {
           notificationManager.showMessageNotification(message);
         }
         
-        return updated;
+        return deduped;
       });
     },
-    [chatId, scrollToBottom]
+    [chatId, scrollToBottom, getCurrentUser, deduplicateMessages]
   );
 
   const updateMessage = useCallback(
@@ -445,6 +482,9 @@ export const useMessages = (chatId) => {
         storage.setMessages(chatId, updated);
         return updated;
       });
+      
+      // Remove from processed IDs
+      processedMessageIds.current.delete(messageId);
     },
     [chatId]
   );

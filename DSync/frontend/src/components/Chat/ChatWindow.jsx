@@ -58,10 +58,10 @@ const ChatWindow = React.memo(
         socket.emit("join-chat", selectedChat._id);
 
         const handleReceiveMessage = (message) => {
-          if (
-            message.chat._id === selectedChat._id ||
-            message.chat === selectedChat._id
-          ) {
+          // Only process messages for the current chat
+          const messageChatId = message.chat._id || message.chat;
+          if (messageChatId === selectedChat._id) {
+            // Ensure we don't add duplicate messages
             addMessage(message);
             onUpdateChatLatestMessage(selectedChat._id, message);
 
@@ -184,6 +184,7 @@ const ChatWindow = React.memo(
           );
 
           if (socket && newMessage) {
+            // Emit to all users in chat for real-time sync
             socket.emit("send-message", {
               ...newMessage,
               chatId: selectedChat._id,

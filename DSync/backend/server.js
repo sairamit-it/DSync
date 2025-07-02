@@ -177,15 +177,10 @@ io.on("connection", (socket) => {
   socket.on("send-message", (data) => {
     try {
       if (data && data.chatId) {
-        // Emit to all users in the chat including sender for real-time sync
-        io.to(data.chatId).emit("receive-message", data);
+        // Emit to other users in the chat (not including sender)
+        socket.to(data.chatId).emit("receive-message", data);
         
-        // Emit delivery status to sender
-        socket.emit("message-delivered", {
-          messageId: data._id,
-          chatId: data.chatId,
-          deliveredTo: data.deliveredTo
-        });
+        console.log(`Message sent to chat ${data.chatId} by ${data.sender?.name || 'Unknown'}`);
       }
     } catch (error) {
       console.error("Send message error:", error);
@@ -216,7 +211,7 @@ io.on("connection", (socket) => {
     try {
       if (data && data.chatId) {
         // Broadcast read status to all users in chat
-        io.to(data.chatId).emit("message-read", data);
+        socket.to(data.chatId).emit("message-read", data);
       }
     } catch (error) {
       console.error("Message read error:", error);
@@ -237,8 +232,8 @@ io.on("connection", (socket) => {
   socket.on("message-liked", (data) => {
     try {
       if (data && data.chatId) {
-        // Broadcast to all users in the chat including sender for real-time sync
-        io.to(data.chatId).emit("message-liked", data);
+        // Broadcast to other users in the chat (not sender)
+        socket.to(data.chatId).emit("message-liked", data);
       }
     } catch (error) {
       console.error("Message liked error:", error);
