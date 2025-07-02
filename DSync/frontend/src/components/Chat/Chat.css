@@ -13,7 +13,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: #000000;
   color: #ffffff;
-  /* Removed overflow: hidden to allow scrolling */
+  overflow: hidden;
 }
 
 .title {
@@ -141,7 +141,6 @@ body {
   padding: 16px;
   border-bottom: 1px solid #222222;
   background: #111111;
-  flex-shrink: 0;
 }
 
 .user-section {
@@ -292,13 +291,11 @@ body {
   box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
 }
 
-/* Chat List Container - Fixed scrolling */
+/* Chat List Container */
 .chat-list-container {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
   background: #111111;
-  min-height: 0; /* Important for flex child scrolling */
 }
 
 .chat-list {
@@ -430,7 +427,6 @@ body {
   display: flex;
   flex-direction: column;
   background: #000000;
-  min-width: 0; /* Important for flex child */
 }
 
 .chat-section.mobile {
@@ -481,8 +477,6 @@ body {
   padding: 12px 16px;
   border-bottom: 1px solid #222222;
   min-height: 60px;
-  flex-shrink: 0;
- 
 }
 
 .back-btn {
@@ -576,25 +570,17 @@ body {
   color: #ffffff;
 }
 
-/* Messages Container - Fixed scrolling */
+/* Messages Container */
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
   background: #000000;
-  position: relative;
-  min-height: 0; /* Critical for proper flexbox scrolling */
-  display: flex;
-  flex-direction: column;
+  padding: 8px 0;
 }
 
-/* Message List - Fixed layout */
+/* Message List */
 .message-list {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  /* Removed min-height and justify-content that were causing scroll issues */
+  padding: 0 16px;
 }
 
 .date-separator {
@@ -618,18 +604,6 @@ body {
   align-items: flex-end;
   gap: 8px;
   position: relative;
-  animation: messageSlideIn 0.3s ease-out;
-}
-
-@keyframes messageSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .message.sent {
@@ -880,7 +854,8 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  top: -11px;
+  top:-11px;
+  
 }
 
 .message-menu-btn {
@@ -896,18 +871,12 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   opacity: 0.8;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
 }
 
 .message-menu-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
   opacity: 1;
-}
-
-.message-menu-btn:active {
-  transform: scale(0.95);
 }
 
 .message-menu {
@@ -920,6 +889,7 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 100;
   min-width: 120px;
+  
 }
 
 .message-menu.own {
@@ -946,16 +916,10 @@ body {
   border-radius: 8px;
   transition: all 0.2s ease;
   text-align: left;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
 }
 
 .menu-item:hover {
   background: #333333;
-}
-
-.menu-item:active {
-  transform: scale(0.98);
 }
 
 .menu-item.delete {
@@ -1035,9 +999,8 @@ body {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 16px;
-  background: #000000;
-  flex-shrink: 0;
+  margin-bottom: 8px;
+  padding: 0 16px;
 }
 
 .typing-avatar {
@@ -1099,8 +1062,8 @@ body {
 .message-input-container {
   border-top: 1px solid #222222;
   background: #111111;
+  position: relative;
   padding: 8px 16px;
-  flex-shrink: 0;
 }
 
 .reply-banner {
@@ -1242,19 +1205,6 @@ body {
   background: linear-gradient(135deg, #462e79 0%, #2ea3b8 100%) !important;
   color: #ffffff !important;
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
-  animation: sendPulse 0.3s ease-out;
-}
-
-@keyframes sendPulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
 }
 
 .voice-btn.recording {
@@ -1381,35 +1331,6 @@ body {
 .empty-chats p {
   color: #8696a0;
   font-size: 13px;
-}
-
-/* Load More Button */
-.load-more-container {
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-  margin-bottom: 8px;
-}
-
-.load-more-btn {
-  padding: 8px 16px;
-  background: #222222;
-  color: #8696a0;
-  border: 1px solid #333333;
-  border-radius: 20px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.load-more-btn:hover {
-  background: #333333;
-  color: #ffffff;
-}
-
-.load-more-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Mobile Responsive Design */
@@ -1549,70 +1470,24 @@ body {
     font-size: 10px;
     padding: 1px 4px;
   }
-
-  .typing-indicator {
-    margin: 8px 12px 12px 12px;
-  }
 }
 
-/* Tablet specific styles */
-@media (min-width: 769px) and (max-width: 1024px) {
-  .message-menu-btn {
-    width: 26px;
-    height: 26px;
-  }
-
-  .message-menu {
-    min-width: 110px;
-  }
-
-  .menu-item {
-    padding: 7px 11px;
-    font-size: 13px;
-  }
-}
-
-/* Touch device specific styles */
-@media (hover: none) and (pointer: coarse) {
-  .message-menu-btn {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .menu-item:hover {
-    background: #333333;
-  }
-
-  .message-menu {
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  }
-}
-
-/* Improved Scrollbar Styles */
+/* Scrollbar Styles */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
   background: #111111;
-  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: #333333;
-  border-radius: 3px;
-  transition: background 0.2s ease;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #8b5cf6;
-}
-
-/* Firefox scrollbar */
-.messages-container,
-.chat-list-container {
-  scrollbar-width: thin;
-  scrollbar-color: #333333 #111111;
 }
 
 /* Selection */
